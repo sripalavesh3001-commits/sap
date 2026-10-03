@@ -1,0 +1,91 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SAP Admin</title><link rel="stylesheet" href="/assets/style.css"></head><body>
+<div class="wrap wide" id="app"></div>
+<script>
+const app=document.getElementById('app'),$=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtD=s=>s?s.split('-').reverse().join('/'):'';
+const pts=n=>Number(n).toString();
+async function api(url,body){
+  const r=await fetch(url,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(r.status===401&&!url.includes('/login')){location.href='/admin';throw 0}
+  if(!r.ok)throw new Error(j.error||'Request failed');return j}
+function go(path){history.pushState(null,'',path);route()}
+document.addEventListener('click',e=>{const a=e.target.closest('a[data-nav]');if(a){e.preventDefault();go(a.getAttribute('href'))}});
+window.onpopstate=route;
+const head=crumbs=>`<div class="bar"><div class="crumbs">${crumbs.map(([t,h])=>h?`<a data-nav href="${h}">${esc(t)}</a>`:`<b>${esc(t)}</b>`).join('<span>/</span>')}</div>
+<button class="ghost" id="out">Log out</button></div>`;
+const bindOut=()=>{$('out').onclick=async()=>{await api('/api/admin/logout',{});location.href='/admin'}};
+
+function login(){
+  app.innerHTML=`<div class="card" style="max-width:380px;margin:60px auto"><h1>Admin login</h1><p class="sub">SAP Points Management</p>
+  <div id="m"></div><form id="lf"><div class="field"><label for="u">Username</label><input id="u" autocomplete="username"></div>
+  <div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password"></div><button>Login</button></form></div>`;
+  $('lf').onsubmit=async e=>{e.preventDefault();
+    try{await api('/api/admin/login',{username:$('u').value,password:$('p').value});location.href='/admin/dashboard'}
+    catch(x){$('m').innerHTML='<div class="msg bad">'+esc(x.message)+'</div>'}}}
+
+async function dashboard(){
+  const s=await api('/api/admin/students');
+  const state=x=>x.submissions===0?'none':x.pending>0?'pend':'done';
+  const applied=s.filter(x=>x.submissions>0).length,pend=s.reduce((a,x)=>a+x.pending,0),pst=s.filter(x=>x.pending>0).length;
+  const cnt=f=>s.filter(x=>state(x)===f).length;
+  const tag=x=>{const t=state(x);return t==='pend'?`<span class="tag p">⏳ ${x.pending} pending</span>`:t==='done'?'<span class="tag c">✅ All claimed</span>':'<span class="tag n">Not applied</span>'};
+  app.innerHTML=head([['Dashboard']])+`<div class="summary"><div class="c"><b>${applied}/${s.length}</b>Students Applied</div><div class="p"><b>${pend}</b>Pending Activities</div><div class="p"><b>${pst}</b>Students with Pending</div></div>
+  <div class="chips" id="ch"><button class="chip on" data-f="all">All (${s.length})</button><button class="chip" data-f="pend">🔴 Pending (${cnt('pend')})</button><button class="chip" data-f="done">🟢 All claimed (${cnt('done')})</button><button class="chip" data-f="none">⚪ Not applied (${cnt('none')})</button></div>
+  <div class="field"><input id="q" type="search" placeholder="Search student name" aria-label="Search student name"></div>
+  <div class="grid" id="sg">${s.map(x=>`<a data-nav class="folder ${state(x)}" data-s="${state(x)}" href="/admin/student/${x.id}"><span class="ic">📁</span>${tag(x)}<b>${esc(x.name)}</b><small>${x.submissions} submission${x.submissions===1?'':'s'}${x.submissions?` · ${x.claimed} claimed`:''}</small></a>`).join('')}</div>`;bindOut();
+  let f='all';
+  const apply=()=>{const q=$('q').value.trim().toLowerCase();[...$('sg').children].forEach(c=>c.classList.toggle('hide',!c.textContent.toLowerCase().includes(q)||(f!=='all'&&c.dataset.s!==f)))};
+  $('q').oninput=apply;
+  $('ch').onclick=e=>{const b=e.target.closest('.chip');if(!b)return;f=b.dataset.f;[...$('ch').children].forEach(c=>c.classList.toggle('on',c===b));apply()}}
+
+async function student(id){
+  const s=await api('/api/admin/students/'+id);
+  app.innerHTML=head([['Dashboard','/admin/dashboard'],[s.name]])+`<h2>${esc(s.name)}</h2><div class="grid">${s.semesters.map(m=>{const t=m.pending>0?'pend':m.claimed>0?'done':'none';return `<a data-nav class="folder ${t}" href="/admin/student/${id}/semester/${m.semester}"><span class="ic">📁</span>${t==='pend'?`<span class="tag p">⏳ ${m.pending} pending</span>`:t==='done'?'<span class="tag c">✅ All claimed</span>':'<span class="tag n">No activity</span>'}<b>Semester ${m.semester}</b>
+  <small>Pending ${m.pending}, Claimed ${m.claimed}, ${pts(m.total_points)} pts</small></a>`}).join('')}</div>`;bindOut()}
+
+async function semester(id,sem){
+  const d=await api(`/api/admin/students/${id}/semesters/${sem}`),st=d.stats;
+  app.innerHTML=head([['Dashboard','/admin/dashboard'],[d.student.name,'/admin/student/'+id],['Semester '+sem]])+
+  `<h2>${esc(d.student.name)}: Semester ${sem}</h2>
+  <div class="summary"><div class="p"><b>${st.pending}</b>Pending Activities</div><div class="c"><b>${st.claimed}</b>Claimed Activities</div><div class="t"><b>${pts(st.total_points)}</b>Total Claimed SAP Points</div></div>
+  ${d.submissions.length?`<div class="grid">${d.submissions.map(s=>{const c=s.claim_status==='claimed';return `<div class="file ${c?'claimed':'pending'}">
+  <h3>${c?'🟢':'🔴'} ${esc(s.label)}</h3><dl class="mini"><dt>Event</dt><dd>${esc(s.event_name)}</dd><dt>Status</dt><dd><span class="badge">${c?'CLAIMED':'PENDING'}</span></dd>
+  <dt>SAP Points</dt><dd>${c?pts(s.claimed_points):'Not Claimed'}</dd></dl><a data-nav class="btn ghost" href="/admin/submission/${s.id}">${c?'View details / Unclaim':'View details / Claim'}</a></div>`}).join('')}</div>`
+  :'<div class="card">No activities submitted for this semester yet.</div>'}`;bindOut()}
+
+async function submission(id){
+  const s=await api('/api/admin/submissions/'+id);
+  const rows=[['Student Name',s.student_name],['Roll Number',s.roll_no],['Email',s.email],['Semester',s.semester],
+   ['Nature of Activity',s.activity_type==='Other'?'Other: '+s.other_activity:s.activity_type],['Event Name',s.event_name],
+   ['College Attended',s.college_attended],['Title of Paper',s.paper_title],['From Date',fmtD(s.from_date)],['To Date',fmtD(s.to_date)],
+   ['No. of Days',s.no_of_days],['Prize',s.prize==='Other'?'Other: '+s.other_prize:s.prize],['Submitted',s.created_at+' UTC']];
+  const c=s.claim_status==='claimed';
+  app.innerHTML=head([['Dashboard','/admin/dashboard'],[s.student_name,'/admin/student/'+s.student_id],['Semester '+s.semester,`/admin/student/${s.student_id}/semester/${s.semester}`],[s.label]])+
+  `<div class="file ${c?'claimed':'pending'}"><h2>${c?'🟢':'🔴'} ${esc(s.label)} <span class="badge">${c?'CLAIMED':'PENDING'}</span></h2>
+  <dl class="detail">${rows.map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}
+  <dt>Certificate</dt><dd><a class="btn ghost" target="_blank" rel="noopener" href="${s.certificate_url}">View PDF</a> <a class="btn ghost" href="${s.certificate_url}?download=1">Download</a></dd>
+  <dt>SAP Points</dt><dd>${c?pts(s.claimed_points):'Not Claimed'}</dd></dl>
+  <div class="claimbox"><div id="m"></div><label for="pt">SAP Points</label>
+  <input id="pt" inputmode="decimal" autocomplete="off" value="${c?esc(pts(s.claimed_points)):''}" placeholder="e.g. 10">
+  <div class="btns"><button class="ok" id="cl">${c?'UPDATE CLAIM':'CLAIM'}</button><button class="danger" id="un" ${c?'':'disabled'}>UNCLAIM</button></div></div></div>`;bindOut();
+  const run=async(url,body)=>{try{await api(url,body);submission(id)}catch(x){$('m').innerHTML='<div class="msg bad">'+esc(x.message)+'</div>'}};
+  $('cl').onclick=()=>{const v=$('pt').value.trim();
+    if(!/^\d+(\.\d{1,2})?$/.test(v)||Number(v)<=0){$('m').innerHTML='<div class="msg bad">Please enter a valid SAP point value.</div>';return}
+    run(`/api/admin/submissions/${id}/claim`,{points:v})};
+  $('un').onclick=()=>run(`/api/admin/submissions/${id}/unclaim`,{})}
+
+async function route(){
+  const p=location.pathname.replace(/\/+$/,'');let x;
+  try{
+    if(p==='/admin')return login();
+    if(p==='/admin/dashboard')return await dashboard();
+    if(x=p.match(/^\/admin\/student\/(\d+)$/))return await student(x[1]);
+    if(x=p.match(/^\/admin\/student\/(\d+)\/semester\/([3-8])$/))return await semester(x[1],x[2]);
+    if(x=p.match(/^\/admin\/submission\/(\d+)$/))return await submission(x[1]);
+    location.replace('/admin/dashboard');
+  }catch(e){if(e)app.innerHTML='<div class="msg bad">'+esc(e.message)+'</div><a data-nav href="/admin/dashboard">Back to dashboard</a>'}}
+route();
+</script></body></html>
