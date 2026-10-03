@@ -1,74 +1,132 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SAP Points Activity Form</title><link rel="stylesheet" href="/assets/style.css"></head><body>
-<div class="wrap"><h1>SAP Points Activity Form</h1><p class="sub">Fill in every field, attach your certificate as a PDF, then submit.</p>
-<div id="result"></div>
-<form id="f" class="card" novalidate>
-<div class="field"><label for="student">Student name</label><select id="student"><option value="">Select your name</option></select></div>
-<div class="row"><div class="field"><label for="roll">Roll number</label><div class="affix"><span>25CHR0</span><input id="roll" inputmode="numeric" autocomplete="off" maxlength="2" placeholder="01-66"></div><div class="err" id="rollErr"></div></div>
-<div class="field"><label for="email">Email</label><div class="affix"><input id="email" autocomplete="off" autocapitalize="none" placeholder="username"><span>.25chem@kongu.edu</span></div><div class="err" id="emailErr"></div></div></div>
-<div class="row"><div class="field"><label for="parity">Semester type</label><select id="parity"><option value="">Select Odd or Even</option><option>Odd</option><option>Even</option></select></div>
-<div class="field"><label for="sem">Semester</label><select id="sem" disabled><option value="">Choose semester type first</option></select></div></div>
-<div class="field"><label for="act">Nature of the activity <small>(Please refer your certificate or brochure before selecting)</small></label><select id="act"><option value="">Select activity</option></select></div>
-<div class="field hide" id="otherActW"><label for="otherAct">Please specify the activity</label><input id="otherAct" maxlength="200"></div>
-<div class="field"><label for="event">Enter the name of event</label><input id="event" maxlength="200" placeholder="National Level Technical Symposium 2026"></div>
-<div class="field"><label for="college">Name of the college attended</label><input id="college" maxlength="200"></div>
-<div class="field"><label for="paper">Title of the paper presented <small>(Enter the full title)</small></label><input id="paper" maxlength="300"></div>
-<div class="row row3"><div class="field"><label for="from">From date</label><input id="from" type="date"></div>
-<div class="field"><label for="to">To date</label><input id="to" type="date"></div>
-<div class="field"><label for="days">No. of days</label><input id="days" readonly placeholder="Auto"></div></div>
-<div class="err" id="dateErr" style="margin:-10px 0 14px"></div>
-<div class="field"><label for="prize">Won any prize <small>(If won any cash prize mention in Others option)</small></label><select id="prize"><option value="">Select prize</option></select></div>
-<div class="field hide" id="otherPrW"><label for="otherPr">Other prize</label><input id="otherPr" maxlength="200" placeholder="Cash Prize ₹5000"></div>
-<div class="field"><label for="cert">Upload your certificate <small>(PDF only, up to 10 MB)</small></label><input id="cert" type="file" accept="application/pdf,.pdf">
-<div id="certInfo" class="sub" style="margin:6px 0 0"></div><div class="err" id="certErr"></div></div>
-<button id="go" type="submit" disabled>Submit</button>
-</form></div>
-<script>
-const $=id=>document.getElementById(id);
-const fill=(sel,items)=>items.forEach(v=>sel.add(new Option(v,v)));
-const SEMS={Odd:[3,5,7],Even:[4,6,8]};
-let ready=false;
-fetch('/api/config').then(r=>r.json()).then(c=>{fill($('student'),c.students);fill($('act'),c.activities);fill($('prize'),c.prizes);ready=true;check()});
-const days=()=>{const f=$('from').value,t=$('to').value;if(!f||!t)return null;const n=Math.round((new Date(t)-new Date(f))/864e5)+1;return n>=1?n:null};
-const certOk=()=>{const f=$('cert').files[0];return !!f&&/\.pdf$/i.test(f.name)&&f.type==='application/pdf'&&f.size<=10485760};
-function check(){
-  $('otherActW').classList.toggle('hide',$('act').value!=='Other');
-  $('otherPrW').classList.toggle('hide',$('prize').value!=='Other');
-  const rv=$('roll').value.trim(),rollOk=/^\d{2}$/.test(rv)&&+rv>=1&&+rv<=66;
-  $('rollErr').textContent=rv&&!rollOk?'Enter a number from 01 to 66.':'';
-  const em=/^[a-z0-9._-]+$/i.test($('email').value.trim());
-  $('emailErr').textContent=$('email').value&&!em?'Enter only your username (letters, numbers, . _ -).':'';
-  const d=days(),both=$('from').value&&$('to').value;
-  $('days').value=d??'';
-  $('dateErr').textContent=both&&d===null?'To date cannot be earlier than From date.':'';
-  const cf=$('cert').files[0];
-  $('certInfo').textContent=cf?`Selected: ${cf.name}`:'No file selected';
-  $('certErr').textContent=cf&&!certOk()?'Only PDF files up to 10 MB are allowed.':'';
-  const v=x=>$(x).value.trim();
-  const ok=ready&&v('student')&&rollOk&&em&&v('parity')&&v('sem')&&v('act')&&($('act').value!=='Other'||v('otherAct'))
-   &&v('event')&&v('college')&&v('paper')&&d!==null&&v('prize')&&($('prize').value!=='Other'||v('otherPr'))&&certOk();
-  $('go').disabled=!ok;
-}
-$('roll').addEventListener('input',()=>{$('roll').value=$('roll').value.replace(/\D/g,'')});
-$('parity').onchange=()=>{const s=$('sem');s.length=0;const p=$('parity').value;
-  s.add(new Option(p?'Select semester':'Choose semester type first',''));
-  (SEMS[p]||[]).forEach(n=>s.add(new Option('Semester '+n,n)));s.disabled=!p;check()};
-['from','to'].forEach(i=>$(i).addEventListener('click',()=>{try{$(i).showPicker()}catch(e){}}));
-$('from').addEventListener('change',()=>{$('to').min=$('from').value});
-$('f').addEventListener('input',check);$('f').addEventListener('change',check);
-$('f').onsubmit=async e=>{e.preventDefault();check();if($('go').disabled)return;
-  const fd=new FormData();
-  fd.set('student_name',$('student').value);fd.set('roll_no','25CHR0'+$('roll').value.trim());fd.set('email',$('email').value.trim()+'.25chem@kongu.edu');
-  fd.set('semester',$('sem').value);fd.set('activity_type',$('act').value);fd.set('other_activity',$('otherAct').value);
-  fd.set('event_name',$('event').value);fd.set('college_attended',$('college').value);fd.set('paper_title',$('paper').value);
-  fd.set('from_date',$('from').value);fd.set('to_date',$('to').value);fd.set('prize',$('prize').value);
-  fd.set('other_prize',$('otherPr').value);fd.set('certificate',$('cert').files[0]);
-  $('go').disabled=true;$('go').textContent='Uploading…';$('result').innerHTML='';
-  try{const r=await fetch('/api/submissions',{method:'POST',body:fd});const j=await r.json();
-    if(r.ok){$('result').innerHTML='<div class="msg good"></div>';$('result').firstChild.textContent=j.message;
-      $('f').reset();$('sem').length=1;$('sem').disabled=true;window.scrollTo(0,0)}
-    else{$('result').innerHTML='<div class="msg bad"></div>';$('result').firstChild.textContent=(j.errors||['Submission failed.']).join(' ');window.scrollTo(0,0)}
-  }catch(x){$('result').innerHTML='<div class="msg bad">Network error. Please try again.</div>'}
-  $('go').textContent='Submit';check()};
-check();
-</script></body></html>
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SAP Points Activity Form</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>SAP Points Activity Form</h1>
+    <p class="sub">Fill in every field, attach your certificate as a PDF, then submit.</p>
+    <div id="result"></div>
+    <form id="f" class="card" novalidate>
+      <div class="field"><label for="student">Student name</label><select id="student">
+          <option value="">Select your name</option>
+        </select></div>
+      <div class="row">
+        <div class="field"><label for="roll">Roll number</label>
+          <div class="affix"><span>25CHR0</span><input id="roll" inputmode="numeric" autocomplete="off" maxlength="2"
+              placeholder="01-66"></div>
+          <div class="err" id="rollErr"></div>
+        </div>
+        <div class="field"><label for="email">Email</label>
+          <div class="affix"><input id="email" autocomplete="off" autocapitalize="none"
+              placeholder="username"><span>.25chem@kongu.edu</span></div>
+          <div class="err" id="emailErr"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="parity">Semester type</label><select id="parity">
+            <option value="">Select Odd or Even</option>
+            <option>Odd</option>
+            <option>Even</option>
+          </select></div>
+        <div class="field"><label for="sem">Semester</label><select id="sem" disabled>
+            <option value="">Choose semester type first</option>
+          </select></div>
+      </div>
+      <div class="field"><label for="act">Nature of the activity <small>(Please refer your certificate or brochure
+            before selecting)</small></label><select id="act">
+          <option value="">Select activity</option>
+        </select></div>
+      <div class="field hide" id="otherActW"><label for="otherAct">Please specify the activity</label><input
+          id="otherAct" maxlength="200"></div>
+      <div class="field"><label for="event">Enter the name of event</label><input id="event" maxlength="200"
+          placeholder=""></div>
+      <div class="field"><label for="college">Name of the college attended</label><input id="college" maxlength="200">
+      </div>
+      <div class="field"><label for="paper">Title of the paper presented <small>(Enter the full
+            title)</small></label><input id="paper" maxlength="300"></div>
+      <div class="row row3">
+        <div class="field"><label for="from">From date</label><input id="from" type="date"></div>
+        <div class="field"><label for="to">To date</label><input id="to" type="date"></div>
+        <div class="field"><label for="days">No. of days</label><input id="days" readonly placeholder="Auto"></div>
+      </div>
+      <div class="err" id="dateErr" style="margin:-10px 0 14px"></div>
+      <div class="field"><label for="prize">Won any prize <small>(If won any cash prize mention in Others
+            option)</small></label><select id="prize">
+          <option value="">Select prize</option>
+        </select></div>
+      <div class="field hide" id="otherPrW"><label for="otherPr">Other prize</label><input id="otherPr" maxlength="200"
+          placeholder="Cash Prize ₹5000"></div>
+      <div class="field"><label for="cert">Upload your certificate <small>(PDF only, up to 10 MB)</small></label><input
+          id="cert" type="file" accept="application/pdf,.pdf">
+        <div id="certInfo" class="sub" style="margin:6px 0 0"></div>
+        <div class="err" id="certErr"></div>
+      </div>
+      <button id="go" type="submit" disabled>Submit</button>
+    </form>
+  </div>
+  <script>
+    const $ = id => document.getElementById(id);
+    const fill = (sel, items) => items.forEach(v => sel.add(new Option(v, v)));
+    const SEMS = { Odd: [3, 5, 7], Even: [4, 6, 8] };
+    let ready = false;
+    fetch('/api/config').then(r => r.json()).then(c => { fill($('student'), c.students); fill($('act'), c.activities); fill($('prize'), c.prizes); ready = true; check() });
+    const days = () => { const f = $('from').value, t = $('to').value; if (!f || !t) return null; const n = Math.round((new Date(t) - new Date(f)) / 864e5) + 1; return n >= 1 ? n : null };
+    const certOk = () => { const f = $('cert').files[0]; return !!f && /\.pdf$/i.test(f.name) && f.type === 'application/pdf' && f.size <= 10485760 };
+    function check() {
+      $('otherActW').classList.toggle('hide', $('act').value !== 'Other');
+      $('otherPrW').classList.toggle('hide', $('prize').value !== 'Other');
+      const rv = $('roll').value.trim(), rollOk = /^\d{2}$/.test(rv) && +rv >= 1 && +rv <= 66;
+      $('rollErr').textContent = rv && !rollOk ? 'Enter a number from 01 to 66.' : '';
+      const em = /^[a-z0-9._-]+$/i.test($('email').value.trim());
+      $('emailErr').textContent = $('email').value && !em ? 'Enter only your username (letters, numbers, . _ -).' : '';
+      const d = days(), both = $('from').value && $('to').value;
+      $('days').value = d ?? '';
+      $('dateErr').textContent = both && d === null ? 'To date cannot be earlier than From date.' : '';
+      const cf = $('cert').files[0];
+      $('certInfo').textContent = cf ? `Selected: ${cf.name}` : 'No file selected';
+      $('certErr').textContent = cf && !certOk() ? 'Only PDF files up to 10 MB are allowed.' : '';
+      const v = x => $(x).value.trim();
+      const ok = ready && v('student') && rollOk && em && v('parity') && v('sem') && v('act') && ($('act').value !== 'Other' || v('otherAct'))
+        && v('event') && v('college') && v('paper') && d !== null && v('prize') && ($('prize').value !== 'Other' || v('otherPr')) && certOk();
+      $('go').disabled = !ok;
+    }
+    $('roll').addEventListener('input', () => { $('roll').value = $('roll').value.replace(/\D/g, '') });
+    $('parity').onchange = () => {
+      const s = $('sem'); s.length = 0; const p = $('parity').value;
+      s.add(new Option(p ? 'Select semester' : 'Choose semester type first', ''));
+      (SEMS[p] || []).forEach(n => s.add(new Option('Semester ' + n, n))); s.disabled = !p; check()
+    };
+    ['from', 'to'].forEach(i => $(i).addEventListener('click', () => { try { $(i).showPicker() } catch (e) { } }));
+    $('from').addEventListener('change', () => { $('to').min = $('from').value });
+    $('f').addEventListener('input', check); $('f').addEventListener('change', check);
+    $('f').onsubmit = async e => {
+      e.preventDefault(); check(); if ($('go').disabled) return;
+      const fd = new FormData();
+      fd.set('student_name', $('student').value); fd.set('roll_no', '25CHR0' + $('roll').value.trim()); fd.set('email', $('email').value.trim() + '.25chem@kongu.edu');
+      fd.set('semester', $('sem').value); fd.set('activity_type', $('act').value); fd.set('other_activity', $('otherAct').value);
+      fd.set('event_name', $('event').value); fd.set('college_attended', $('college').value); fd.set('paper_title', $('paper').value);
+      fd.set('from_date', $('from').value); fd.set('to_date', $('to').value); fd.set('prize', $('prize').value);
+      fd.set('other_prize', $('otherPr').value); fd.set('certificate', $('cert').files[0]);
+      $('go').disabled = true; $('go').textContent = 'Uploading…'; $('result').innerHTML = '';
+      try {
+        const r = await fetch('/api/submissions', { method: 'POST', body: fd }); const j = await r.json();
+        if (r.ok) {
+          $('result').innerHTML = '<div class="msg good"></div>'; $('result').firstChild.textContent = j.message;
+          $('f').reset(); $('sem').length = 1; $('sem').disabled = true; window.scrollTo(0, 0)
+        }
+        else { $('result').innerHTML = '<div class="msg bad"></div>'; $('result').firstChild.textContent = (j.errors || ['Submission failed.']).join(' '); window.scrollTo(0, 0) }
+      } catch (x) { $('result').innerHTML = '<div class="msg bad">Network error. Please try again.</div>' }
+      $('go').textContent = 'Submit'; check()
+    };
+    check();
+  </script>
+</body>
+
+</html>
