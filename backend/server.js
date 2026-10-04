@@ -70,6 +70,12 @@ const STUDENTS = ['AAYISHA SIDDIQUA S',
   'SAI KRISHNA CHAITANYA G',
   'SAI SABARI T M',
   'SANJITH D'];
+// Last 8 students are the second group (lateral entry): roll 25CHL058-066, email *.26chem@kongu.edu
+const LATERAL_START = 57;
+const LATERAL = STUDENTS.slice(LATERAL_START);
+const groupOf = name => LATERAL.includes(name)
+  ? { roll: '25CHL0', min: 58, max: 66, domain: '.26chem@kongu.edu' }
+  : { roll: '25CHR0', min: 1, max: 57, domain: '.25chem@kongu.edu' };
 const SEMESTERS = [3, 4, 5, 6, 7, 8];                      // no Semester 1 or 2
 const ACTIVITIES = ['Symposium', 'National Conference', 'International Conference', 'Hackathon', 'Paper Presentation', 'Other'];
 const PRIZES = ['I', 'II', 'III', 'IV', 'Participation', 'Other'];
@@ -169,7 +175,7 @@ app.get('/admin/*', (req, res) =>
   sessionOf(req) ? res.sendFile(path.join(ROOT, 'admin', 'admin.html')) : res.redirect('/admin'));
 
 // Public API
-app.get('/api/config', (_, res) => res.json({ students: STUDENTS, semesters: SEMESTERS, activities: ACTIVITIES, prizes: PRIZES }));
+app.get('/api/config', (_, res) => res.json({ students: STUDENTS, lateral: LATERAL, semesters: SEMESTERS, activities: ACTIVITIES, prizes: PRIZES }));
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });
 const parseDate = s => { if (!/^\d{4}-\d{2}-\d{2}$/.test(s || '')) return null; const d = new Date(s + 'T00:00:00Z'); return isNaN(d) || d.toISOString().slice(0, 10) !== s ? null : d; };
@@ -182,8 +188,11 @@ app.post('/api/submissions', (req, res, next) => {
       const e = [], text = (k, label, max = 200) => { if (!b[k]) e.push(`${label} is required.`); else if (b[k].length > max) e.push(`${label} is too long.`); };
       const student = STUDENTS.includes(b.student_name) ? await get('SELECT * FROM students WHERE name=?', [b.student_name]) : null;
       if (!student) e.push('Invalid student name.');
-      if (!/^25CHR0(0[1-9]|[1-5]\d|6[0-6])$/.test(b.roll_no || '')) e.push('Roll number must be 25CHR001 to 25CHR066.');
-      if (!/^[a-z0-9._-]+\.25chem@kongu\.edu$/i.test(b.email || '')) e.push('Email must be username.25chem@kongu.edu.');
+      const g = groupOf(b.student_name), rm = /^(25CH[RL]0)(\d{2})$/.exec(b.roll_no || '');
+      if (!rm || rm[1] !== g.roll || +rm[2] < g.min || +rm[2] > g.max)
+        e.push(`Roll number must be ${g.roll}${String(g.min).padStart(2, '0')} to ${g.roll}${g.max}.`);
+      const um = /^([a-z0-9._-]+)(\.2[56]chem@kongu\.edu)$/i.exec(b.email || '');
+      if (!um || um[2].toLowerCase() !== g.domain) e.push(`Email must be username${g.domain}.`);
       const sem = /^\d+$/.test(b.semester || '') ? Number(b.semester) : NaN;
       if (!SEMESTERS.includes(sem)) e.push('Semester must be one of 3, 4, 5, 6, 7, 8.');
       if (!ACTIVITIES.includes(b.activity_type)) e.push('Invalid nature of activity.');
